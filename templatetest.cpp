@@ -3,21 +3,21 @@
 #include <algorithm>
 #include <memory>
 
-template <typename... Ts>
+template <typename RV, typename... Ts>
 struct Visitor {
-	Visitor(std::function<void(const Ts&)>... args): ts { std::move(args)... } {}
+	Visitor(std::function<RV(const Ts&)>... args): ts { std::move(args)... } {}
 
 	template <typename T>
-	void visit(const T& t) {
-		return std::get<std::function<void(const T&)>>(ts)(t);
+	RV visit(const T& t) {
+		return std::get<std::function<RV(const T&)>>(ts)(t);
 	}
 
 private:
-	std::tuple<std::function<void(const Ts&)>...> ts;
+	std::tuple<std::function<RV(const Ts&)>...> ts;
 
 };
 
-using BaseVisitor = Visitor<struct A, struct B>;
+using BaseVisitor = Visitor<void, struct A, struct B>;
 
 struct Base {
 	virtual void accept(BaseVisitor& v) = 0;
