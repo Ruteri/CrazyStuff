@@ -15,14 +15,15 @@ struct B: public Base {
 	void print() { std::cout << "struct B" << std::endl; }
 };
 
-template <typename Base, typename T = void, typename... Ts>
+template <typename T = void, typename... Ts>
 struct CompositeVector {
 	CompositeVector(std::vector<T> t, std::vector<Ts>... ts): vec(t), /*it(vec.end()),*/ composite(ts...) {}
 	std::vector<T> vec;
 
-	CompositeVector<Base, Ts...> composite;
+	CompositeVector<Ts...> composite;
 
-	void visit(std::function<void(Base&)> f) {
+	template <typename CommonBase>
+	void visit(std::function<void(CommonBase&)> f) {
 		{
 			for (auto it = vec.begin(); it != vec.end(); ++it) {
 				f(*it);
@@ -33,17 +34,18 @@ struct CompositeVector {
 	}
 };
 
-template <typename Base>
-struct CompositeVector<Base, void> {
-	void visit(std::function<void(Base&)>) {}
+template <>
+struct CompositeVector<void> {
+	template <typename T>
+	void visit(std::function<void(T&)>) {}
 };
 
 int main() {
 	std::vector<A> vecA({A()});
 	std::vector<B> vecB({B()});
-	auto vec = CompositeVector<Base, A, B>(vecA, vecB);
+	auto vec = CompositeVector<A, B>(vecA, vecB);
 
-	vec.visit([](Base& base){ base.print(); });
+	vec.visit<Base>([](Base& base){ base.print(); });
 
 	return 0;
 }
