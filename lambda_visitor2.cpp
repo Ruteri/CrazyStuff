@@ -5,10 +5,10 @@ struct Visitable {
 #include <memory>
 #include <stdexcept>
 struct AnyVisitor {
-private:
 	template <typename... T>
 	AnyVisitor(std::function<void(T)>... fs): _visitor(new visitor_holder<T...>(fs...)) {}
 
+private:
 	struct base_holder {
 		virtual ~base_holder() {} // we need one virtual function for dynamic_cast to work
 	};
@@ -56,13 +56,20 @@ struct DerivedClass2: public Visitable
 #include <vector>
 #include <iostream>
 int main() {
-	AnyVisitor v = AnyVisitor::createVisitor<DerivedClass1&, DerivedClass2&, DerivedClass2, int, std::string&, std::string>(
-		[](DerivedClass1&){ std::cout << "c1" <<std::endl; },
-		[](DerivedClass2&){ std::cout << "c2" <<std::endl; },
-		[](DerivedClass2){ std::cout << "c2v" <<std::endl; },
-		[](int i) { std::cout << i << std::endl; },
-		[](std::string& s) { std::cout << s << std::endl; },
-		[](std::string s) { std::cout << s << std::endl; }
+
+	std::function<void(DerivedClass1&)> fsd1 = [](DerivedClass1&){ std::cout << "c1" <<std::endl; };
+	AnyVisitor v = AnyVisitor(
+		fsd1,
+		std::function<void(DerivedClass2&)>{[](DerivedClass2&){ std::cout << "c2" <<std::endl; }},
+		std::function<void(DerivedClass2)>{[](DerivedClass2){ std::cout << "c2v" <<std::endl; }},
+		std::function<void(int)>{[](int i) { std::cout << i << std::endl; }},
+		std::function<void(std::string&)>{[](std::string& s) { std::cout << s << std::endl; }},
+		std::function<void(std::string)>{[](std::string s) { std::cout << s << std::endl; }}
+	);
+
+	AnyVisitor v2 = AnyVisitor::createVisitor<DerivedClass1&, DerivedClass2&>(
+		[](DerivedClass1&){ std::cout << "c12" <<std::endl; },
+		[](DerivedClass2&){ std::cout << "c22" <<std::endl; }
 	);
 
 	v.visit(42);
@@ -74,7 +81,12 @@ int main() {
 	std::vector<Visitable*> objs { new DerivedClass2(), new DerivedClass1(), new DerivedClass1() };
 	for (auto o: objs) {
 		o->accept(v); // always calls lambda with reference type ( visit(*this); )
+		o->accept(v2); // always calls lambda with reference type ( visit(*this); )
 	}
 	v.visit(DerivedClass2{}); // by value
+
+	
+	fsd1 = std::function<void(DerivedClass1&)>{[](DerivedClass1&){ std::cout << "c12" <<std::endl; }};
+	objs[2]->accept(v);
 
 }
