@@ -75,11 +75,11 @@ private:
 template <typename... ts>
 struct interface_wrapper: virtual _interface<ts>... {
 	interface_wrapper(typename _interface<ts>::Args... args): _interface<ts>(args)... {}
+	interface_wrapper(std::function<ts*(void)>... fns): _interface<ts>(fns)... {}
 
 	template <typename it>
-	typename std::enable_if<detail::any_true<std::is_same<ts, it>...>::value, _interface<it>&>::type
-	get() {
-		static_assert(detail::any_true<std::is_base_of<ts, it>...>::value, "");
+	_interface<it>& get() {
+		static_assert(std::is_base_of<_interface<it>, interface_wrapper<ts...>>::value, "Non-exsitent interface requested");
 		return *static_cast<_interface<it>*>(this);
 	}
 }; 
@@ -148,6 +148,11 @@ int main() {
 
 	handler_user h_user1(new handler1());
 	h_user1.call();
+
+	auto m_if3 = interface_wrapper<interface2, interface3>(
+		[](){ return new handler2_2();}, [](){ return new interface3();} );
+	
+	m_if3.get<interface2>()->act2();
 
 	return 0;
 }
