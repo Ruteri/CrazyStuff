@@ -1,158 +1,185 @@
-#include <iostream>
-
+#include <functional>
 #include <type_traits>
+
 namespace detail {
-	template <typename... ts>
-	struct any_true;
+    template <typename... ts>
+    struct any_true;
 
-	template <typename t, typename... ts>
-	struct any_true<t, ts...> {
-		static const bool value = t::value || any_true<ts...>::value;
+    template <typename t, typename... ts>
+    struct any_true<t, ts...> {
+        static const bool value = t::value || any_true<ts...>::value;
+    };
+
+    template <typename t>
+    struct any_true<t> {
+        static const bool value = t::value;
+    };
+
+	template<typename> struct type_eraser { using type = int; };
+	template<typename t, typename... ts> struct type_getter { using type = t; };
+
+	template <typename ct>
+	struct interface_helper {
+		// TODO: figure out how to pass multiple arguments not using tuples (might not be possible)
+		// Possible fix: helper struct template with just the arguments
+		// <template <typename... Args> typename>
+		template <typename... Ignored>
+		static ct* create(typename ct::Args arg, Ignored... rest) {
+			static_assert(std::is_constructible<ct, typename ct::Args>::value, "One of the interfaces could not be creates using provided arguments");
+			return new ct(arg);
+		}
 	};
 
-	template <typename t>
-	struct any_true<t> {
-		static const bool value = t::value;
+	template <bool B, typename T = void>
+	struct disable_if {
+		using type = T;
 	};
+
+	template <typename T>
+	struct disable_if<true,T> {
+	};
+
+	struct multi_wrapper_trait {};
+
 } // detail
+
+template <typename interface>
+struct _interface {
+private:
+    interface* _impl;
+
+public:
+    _interface(interface* t): _impl(t) {}
+    _interface(std::function<interface*(void)> f): _impl(f()) {}
+
+    interface* operator->() { return _impl; }
+    const interface* const operator->() const { return _impl; }
+
+	template <typename RV, typename... Args>
+	typename std::enable_if<!std::is_base_of<detail::multi_wrapper_trait, interface>::value, std::function<RV(Args...)>>::type
+	call(RV (interface::*func)(Args...)) {
+		return [this, func](Args... args) { (_impl->*func)(args...); };
+	}
+
+	template <typename RV, typename... Args>
+	typename std::enable_if<std::is_base_of<detail::multi_wrapper_trait, interface>::value, std::function<RV(Args...)>>::type
+	call(RV (interface::*func)(Args...)) {
+		return [this, func](Args... args) { return _impl->operator[](func); };
+	}
+};
+
+#include <vector>
+template <typename IF>
+struct multi_interface: IF, detail::multi_wrapper_trait {
+	template <typename... cts>
+	multi_interface(cts*... args): ifs(args...) {}
+
+	template <typename... cts>
+	struct concrete_creator {
+		template <typename... Args>
+		static multi_interface<IF>* create(Args... args) {
+			return new multi_interface<IF>(detail::interface_helper<cts>::create(args...)...);
+		}
+	};
+
+	template <typename RV, typename IT, typename... Args>
+	auto operator[](RV (IT::*func)(Args...)) -> std::function<RV(Args...)> {
+		// The interface better not be deleted!
+		// we cannot afford passing the vector by value every time
+		return [this, func](Args... args) {
+			for (auto i: ifs) {
+				(i->*func)(args...);
+			}
+		};
+	}
+
+private:
+	std::vector<IF*> ifs;
+};
+
+
+template <typename... ts> // interfaces
+struct interface_wrapper: virtual _interface<ts>... {
+    interface_wrapper(ts*... args): _interface<ts>(args)... {}
+    interface_wrapper(std::function<ts*(void)>... fns): _interface<ts>(fns)... {}
+
+	template <typename... cts>
+	struct concrete_creator {
+		template <typename... Args>
+		static interface_wrapper<ts...>* create(Args... args) {
+			return new interface_wrapper<ts...>(detail::interface_helper<cts>::create(args...)...);
+		}
+	};
+
+	template <typename RV, typename IT, typename... Args>
+	auto call(RV (IT::*func)(Args...), Args... args) -> RV {
+		return static_cast<_interface<IT>*>(this)->call(func)(args...);
+	}
+
+	template <typename RV, typename IT, typename... Args>
+	auto operator()(RV (IT::*func)(Args...), Args... args) -> RV {
+		return static_cast<_interface<IT>*>(this)->call(func)(args...);
+	}
+
+	template <typename RV, typename IT, typename... Args>
+	auto operator[](RV (IT::*func)(Args...)) -> std::function<RV(Args...)> {
+		return static_cast<_interface<IT>*>(this)->call(func);
+		//IT* iface = get<IT>().operator->();
+		//return [iface, func](Args... args){ (iface->*func)(args...); };
+	}
+
+    template <typename it>
+    _interface<it>& get() {
+        static_assert(std::is_base_of<_interface<it>, interface_wrapper<ts...>>::value, "Non-exsitent interface requested");
+        return *static_cast<_interface<it>*>(this);
+    }
+};
 
 
 struct interface1 {
-	virtual void act1() = 0;
-	interface1* operator->() { return this; }
+	virtual void test() = 0;
+	virtual void test2(int i) = 0;
 };
 
 struct interface2 {
-	virtual void act2() = 0;
-};
-
-struct interface3 {
-	virtual void act3() { std::cout << "Act3!" << std::endl; }
-};
-
-struct handler1: interface1 {
-	void act1() { std::cout << "Act1!" << std::endl; }
-};
-
-// Does not conform to interface
-struct handler2 {
-	void act2() { std::cout << "Act2!" << std::endl; }
-};
-
-struct handler2_wrapper: interface2 {
-	handler2_wrapper(): base(new handler2()) {}
-
-	void act2() { base->act2(); }	
-
-private:
-	handler2* base;
-};
-
-struct handler2_2: interface2 {
-	void act2() { std::cout << "Act2_2!" << std::endl; }
-};
-
-struct handler3: interface3 {
-	void act3() { std::cout << "Act3_2!" << std::endl; }
+	virtual void test() = 0;
+	virtual void test2(bool i) = 0;
 };
 
 
-#include <functional>
-template <typename interface>
-struct _interface {
-	using Args = interface*;
+#include <iostream>
 
-	_interface(interface* t): _impl(t) {}
-	_interface(std::function<interface*(void)> f): _impl(f()) {}
+struct c_handler1: interface1 {
+	using Args = int;
+	c_handler1(int i) {}
 
-	interface* operator->() { return _impl; }
-	const interface* const operator->() const { return _impl; }
-
-private:
-	interface* _impl;
+	void test() { std::cout << "Test 1" << std::endl; }
+	void test2(int i) { std::cout << "Test 1 " << i << std::endl; }
 };
 
-template <typename... ts>
-struct interface_wrapper: virtual _interface<ts>... {
-	interface_wrapper(typename _interface<ts>::Args... args): _interface<ts>(args)... {}
-	interface_wrapper(std::function<ts*(void)>... fns): _interface<ts>(fns)... {}
+struct c_handler2: interface2 {
+	using Args = double;
+	c_handler2(double d) {}
 
-	template <typename it>
-	_interface<it>& get() {
-		static_assert(std::is_base_of<_interface<it>, interface_wrapper<ts...>>::value, "Non-exsitent interface requested");
-		return *static_cast<_interface<it>*>(this);
-	}
-}; 
-
-
-struct wrapper_user_passive {
-	wrapper_user_passive(interface1* c1, interface3* c3): m_if(c1, c3) {}
-
-	void call() { m_if.get<interface1>()->act1(); }
-
-private:
-	interface_wrapper<interface1, interface3> m_if;
-
+	void test() { std::cout << "Test 2" << std::endl; }
+	void test2(bool i) { std::cout << "Test 1 " << i << std::endl; }
 };
 
-#include <memory>
-struct wrapper_user_active {
-	wrapper_user_active(interface1* c1, bool m_c3): m_if(nullptr) {
-		interface3* if3 = m_c3? new interface3() : new handler3();
-		m_if.reset(new interface_wrapper<interface1, interface3>(c1, if3));
-	}
 
-	void call() { m_if->get<interface3>()->act3(); }
-
-private:
-	std::unique_ptr<interface_wrapper<interface1, interface3>> m_if;
-
-};
-
-struct handler_user {
-	handler_user(interface1* c1): m_if1(*c1) {}
-	handler_user(interface1& c1): m_if1(c1) {}
-
-	void call() { m_if1->act1(); }
-
-private:
-	interface1& m_if1;
-
-};
 
 
 int main() {
-	handler1 concrete1;
-	handler2_wrapper concrete2;
-	handler2_2 concrete2_2;
 
-	interface_wrapper<interface1, interface2> m_if(&concrete1, &concrete2);
+	auto i = *interface_wrapper<interface1, interface2>::concrete_creator<c_handler1, c_handler2>::create(3.23, 1);
 
-	m_if.get<interface1>()->act1();
-	m_if.get<interface2>()->act2();
+	auto c1 = new c_handler1(3);
+	auto c2 = new c_handler2(3.3);
+	auto i2 = interface_wrapper<interface1, interface2>(c1, c2);
 
-	auto m_if2 = interface_wrapper<interface2, interface3>(&concrete2_2, new interface3());
-
-	m_if2.get<interface2>()->act2();
-	m_if2.get<interface3>()->act3();
-
-	interface3 concrete3;
-	wrapper_user_passive w_user1(&concrete1, &concrete3);
-	w_user1.call();
-
-	wrapper_user_active w_user2(&concrete1, true);
-	wrapper_user_active w_user3(&concrete1, false);
-
-	w_user2.call();
-	w_user3.call();
-
-	handler_user h_user1(new handler1());
-	h_user1.call();
-
-	auto m_if3 = interface_wrapper<interface2, interface3>(
-		[](){ return new handler2_2();}, [](){ return new interface3();} );
-	
-	m_if3.get<interface2>()->act2();
+	i[&interface1::test]();
+	i[&interface2::test]();
+	i[&interface1::test2](4);
+	i[&interface2::test2](true);
 
 	return 0;
 }
