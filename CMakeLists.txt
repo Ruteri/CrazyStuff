@@ -14,3 +14,11 @@ target_compile_options(CrazyPolymorphicVectorTemplate PRIVATE --std=c++1y)
 project (GreatGenericLambdaTemplateVisitor)
 add_executable(GenericLambdaTemplateVisitor lambda_visitor2.cpp)
 target_compile_options(GenericLambdaTemplateVisitor PRIVATE --std=c++11 -ggdb)
+
+project (NotSoGreatGlobalInterface)
+add_executable(NotSoGreatGlobalInterface global_virtual_obj.cpp)
+target_compile_options(NotSoGreatGlobalInterface PRIVATE --std=c++14 -ggdb)
+
+project (ShootYourselfInTheFootWithVirtualFunctions)
+add_executable(ShootYourselfInTheFootWithVirtualFunctions bad_inheritance_cast.cpp)
+target_compile_options(ShootYourselfInTheFootWithVirtualFunctions PRIVATE --std=c++14 -ggdb)

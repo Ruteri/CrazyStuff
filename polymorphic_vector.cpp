@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iostream>
 
+#include <vector>
+
 struct Base {
 };
 
@@ -24,12 +26,12 @@ struct B: public Base {
 	void print() const { std::cout << this << name << b << std::endl; }
 };
 
-template <template <typename T,typename> class Container = std::vector, typename T = void, typename... Ts>
+template <typename T = void, typename... Ts>
 struct CompositeVector {
-	CompositeVector(Container<T, std::allocator<T>>& t, Container<Ts, std::allocator<Ts>>&... ts): container(t), composite(ts...) {}
+	CompositeVector(std::vector<T>& t, std::vector<Ts>&... ts): container(t), composite(ts...) {}
 
-	Container<T, std::allocator<T>> container;
-	CompositeVector<Container, Ts...> composite;
+	std::vector<T> container;
+	CompositeVector<Ts...> composite;
 
 	void visit(const std::function<void(const T&)>& f, const std::function<void(const Ts&)>... fs) const {
 		std::for_each(container.cbegin(), container.cend(), f);
@@ -37,25 +39,18 @@ struct CompositeVector {
 	}
 };
 
-template <template <typename,typename> class Container>
-struct CompositeVector<Container, void> {
+template <>
+struct CompositeVector<void> {
 	void visit() const {}
 };
 
-#include <vector>
-#include <list>
-#include <deque>
-
-template <typename T, typename A = std::allocator<T>>
-using container = std::list<T, A>;
-
 int main() {
 
-	container<A> vecA;
-	//vecA.reserve(20);
+	std::vector<A> vecA;
+	vecA.reserve(20);
 
-	container<B> vecB;
-	//vecB.reserve(20);
+	std::vector<B> vecB;
+	vecB.reserve(20);
 
 	std::vector<A*> vecA2;
 	std::vector<B*> vecB2;
@@ -70,7 +65,7 @@ int main() {
 		vecB.push_back(*vecB2[32001*i + i]);
 	}
 
-	const auto vec = CompositeVector<container, A, B>(vecA, vecB);
+	const auto vec = CompositeVector<A, B>(vecA, vecB);
 
 	const auto al = [](const A& a)->void{ a.print(); };
 	const auto bl = [](const B& b)->void{ b.print(); };
