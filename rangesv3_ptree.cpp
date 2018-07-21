@@ -90,6 +90,46 @@ struct basic_alarm_ptree { // TODO: make container type a template
 	size_t size() const { return alarm_source? (*alarm_source).get().alarms.size() : 0; }
 };
 
+// adapter class
+template <class C>
+struct basic_iterator_ptree { // TODO: make container type a template
+	using key_type = std::string;
+	using data_type = std::string;
+
+	using container_type = C;//typename std::deque<std::pair<key_type, Alarm>>;
+	using const_iterator = typename container_type::const_iterator;
+
+	container_type empty_container;
+	const_iterator begin_it = empty_container.begin();
+	const_iterator end_it = empty_container.end();
+
+	data_type m_data;
+
+	const_iterator begin() const {
+		return begin_it;
+	}
+
+	const_iterator end() const {
+		return end_it;
+	}
+	
+	basic_iterator_ptree() = default;
+	basic_iterator_ptree(const data_type& data): m_data(data) {}
+	basic_iterator_ptree(const_iterator _b, const_iterator _e, const data_type& data = data_type()): begin_it(_b), end_it(_e), m_data(data) {}
+
+	/* serialization (access) */
+	template <typename Str>
+	Str get_value() const { return Str(m_data); }
+
+	bool empty() const { return size() == 0; }
+
+	size_t count(const key_type& key) const {
+		return key.empty()? size() : 0;
+	}
+
+	size_t size() const { return std::distance(begin_it, end_it); }
+};
+
 #include <functional>
 
 // ignore this, workaround for key_type in boost's function specialization
@@ -239,6 +279,14 @@ int main() {
 		variant_ptree_holder<pt::ptree> vp4(pt4);
 		holder.put_child("some other json stuff", vp4);
 		pt4.put_value("some other value");
+
+		using container_type = std::vector<std::pair<std::string, Alarm>>;
+		container_type alarms_vec;
+		alarms_vec.emplace_back("alarm 1", Alarm{1, 154, "alarm 1"});
+		alarms_vec.emplace_back("alarm 2", Alarm{2, 176, "alarm 2"});
+		basic_iterator_ptree<container_type> bip(alarms_vec.begin(), alarms_vec.end());
+		variant_ptree_holder<basic_iterator_ptree<container_type>> vp5(bip);
+		holder.put_child("alarm vector 1", vp5);
 
 		pt::write_json(std::cout, holder, true);
 	}
