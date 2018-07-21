@@ -91,31 +91,27 @@ struct basic_alarm_ptree { // TODO: make container type a template
 };
 
 // adapter class
-template <class C>
+template <class IT>
 struct basic_iterator_ptree { // TODO: make container type a template
 	using key_type = std::string;
 	using data_type = std::string;
 
-	using container_type = C;//typename std::deque<std::pair<key_type, Alarm>>;
-	using const_iterator = typename container_type::const_iterator;
+	using const_iterator = IT;
 
-	container_type empty_container;
-	const_iterator begin_it = empty_container.begin();
-	const_iterator end_it = empty_container.end();
+	IT begin_it;
+	IT end_it;
 
 	data_type m_data;
 
-	const_iterator begin() const {
+	IT begin() const {
 		return begin_it;
 	}
 
-	const_iterator end() const {
+	IT end() const {
 		return end_it;
 	}
 	
-	basic_iterator_ptree() = default;
-	basic_iterator_ptree(const data_type& data): m_data(data) {}
-	basic_iterator_ptree(const_iterator _b, const_iterator _e, const data_type& data = data_type()): begin_it(_b), end_it(_e), m_data(data) {}
+	basic_iterator_ptree(IT _b, IT _e, const data_type& data = data_type()): begin_it(_b), end_it(_e), m_data(data) {}
 
 	/* serialization (access) */
 	template <typename Str>
@@ -282,13 +278,25 @@ int main() {
 
 		using container_type = std::vector<std::pair<std::string, Alarm>>;
 		container_type alarms_vec;
+		using iterator_type = container_type::const_iterator;
+		using ptree_type = basic_iterator_ptree<iterator_type>;
 		alarms_vec.emplace_back("alarm 1", Alarm{1, 154, "alarm 1"});
 		alarms_vec.emplace_back("alarm 2", Alarm{2, 176, "alarm 2"});
-		basic_iterator_ptree<container_type> bip(alarms_vec.begin(), alarms_vec.end());
-		variant_ptree_holder<basic_iterator_ptree<container_type>> vp5(bip);
+		ptree_type bip(alarms_vec.begin(), alarms_vec.end());
+		variant_ptree_holder<ptree_type> vp5(bip);
 		holder.put_child("alarm vector 1", vp5);
 
 		pt::write_json(std::cout, holder, true);
+	}
+
+	{
+		std::vector<int> v {1, 2, 3};
+		auto rg = v | ranges::view::transform([](int i)->std::pair<std::string, int>{return {"att", i};});
+		auto begin = ranges::begin(rg);
+		auto end = ranges::end(rg);
+		for (auto i = begin; i != end; ++i)
+			std::cout << (*i).first << ": " << (*i).second << " ";
+		std::cout << "\n";
 	}
 
 	return 0;
