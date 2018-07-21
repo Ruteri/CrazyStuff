@@ -1,7 +1,11 @@
 #include <sstream>
+
+// boost json writer patched for ranges v3 library operator-> not working
+#include "boost_patches/write.hpp"
+
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/json_parser/detail/write.hpp>
+// #include <boost/property_tree/json_parser/detail/write.hpp>
 
 #include <utility>
 #include <vector>
@@ -14,6 +18,7 @@ namespace pt = boost::property_tree;
 
 struct Alarm {
 	using key_type = std::string;
+	std::string name;
 	size_t id;
 	size_t raise_time;
 	std::string msg;
@@ -92,7 +97,7 @@ struct basic_alarm_ptree { // TODO: make container type a template
 
 // adapter class
 template <class IT>
-struct basic_iterator_ptree { // TODO: make container type a template
+struct basic_iterator_ptree {
 	using key_type = std::string;
 	using data_type = std::string;
 
@@ -250,12 +255,12 @@ int main() {
 	{
 		basic_ptree_holder holder;
 		AlarmSource as1;
-		as1.alarms.emplace_back("a", Alarm{1, 100, "alarm1"});
-		as1.alarms.emplace_back("b", Alarm{2, 113, "alarm2"});
+		as1.alarms.emplace_back("a", Alarm{"", 1, 100, "alarm1"});
+		as1.alarms.emplace_back("b", Alarm{"", 2, 113, "alarm2"});
 
 		AlarmSource as2;
-		as2.alarms.emplace_back("c", Alarm{1, 103, "alarm1"});
-		as2.alarms.emplace_back("d", Alarm{2, 121, "alarm2"});
+		as2.alarms.emplace_back("c", Alarm{"", 1, 103, "alarm1"});
+		as2.alarms.emplace_back("d", Alarm{"", 2, 121, "alarm2"});
 
 		AlarmSource as3;
 
@@ -276,27 +281,21 @@ int main() {
 		holder.put_child("some other json stuff", vp4);
 		pt4.put_value("some other value");
 
-		using container_type = std::vector<std::pair<std::string, Alarm>>;
+		using container_type = std::vector<Alarm>;
 		container_type alarms_vec;
-		using iterator_type = container_type::const_iterator;
+		alarms_vec.push_back(Alarm{"alarm 1", 1, 154, "msg 1"});
+		alarms_vec.push_back(Alarm{"alarm 2", 2, 176, "msg 2"});
+
+		auto range = alarms_vec | ranges::view::transform([](Alarm& a)->std::pair<std::string, Alarm>{ return {a.name, a}; });
+
+		using iterator_type = decltype(range.begin());
 		using ptree_type = basic_iterator_ptree<iterator_type>;
-		alarms_vec.emplace_back("alarm 1", Alarm{1, 154, "alarm 1"});
-		alarms_vec.emplace_back("alarm 2", Alarm{2, 176, "alarm 2"});
-		ptree_type bip(alarms_vec.begin(), alarms_vec.end());
+
+		ptree_type bip(range.begin(), range.end());
 		variant_ptree_holder<ptree_type> vp5(bip);
 		holder.put_child("alarm vector 1", vp5);
 
 		pt::write_json(std::cout, holder, true);
-	}
-
-	{
-		std::vector<int> v {1, 2, 3};
-		auto rg = v | ranges::view::transform([](int i)->std::pair<std::string, int>{return {"att", i};});
-		auto begin = ranges::begin(rg);
-		auto end = ranges::end(rg);
-		for (auto i = begin; i != end; ++i)
-			std::cout << (*i).first << ": " << (*i).second << " ";
-		std::cout << "\n";
 	}
 
 	return 0;

@@ -22,3 +22,7 @@ target_compile_options(NotSoGreatGlobalInterface PRIVATE --std=c++14 -ggdb)
 project (ShootYourselfInTheFootWithVirtualFunctions)
 add_executable(ShootYourselfInTheFootWithVirtualFunctions bad_inheritance_cast.cpp)
 target_compile_options(ShootYourselfInTheFootWithVirtualFunctions PRIVATE --std=c++14 -ggdb)
+
+project (SuperiorMultitypeRangesV3BasedPtree)
+add_executable(SuperiorMultitypeRangesV3BasedPtree rangesv3_ptree.cpp)
+target_compile_options(SuperiorMultitypeRangesV3BasedPtree PRIVATE --std=c++14 -ggdb)
