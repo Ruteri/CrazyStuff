@@ -95,9 +95,41 @@ struct basic_alarm_ptree { // TODO: make container type a template
 	size_t size() const { return alarm_source? (*alarm_source).get().alarms.size() : 0; }
 };
 
-// adapter class
+template <class Range>
+struct basic_range_ptree { 
+	using key_type = std::string;
+	using data_type = std::string;
+
+	Range range;
+	using const_iterator = decltype(range.begin());
+
+	data_type m_data;
+
+	const_iterator begin() const {
+		return ranges::begin(range);
+	}
+
+	const_iterator end() const {
+		return ranges::end(range);
+	}
+	
+	basic_range_ptree(Range _range, const data_type& data = data_type()): range(_range), m_data(data) {}
+
+	/* serialization (access) */
+	template <typename Str>
+	Str get_value() const { return Str(m_data); }
+
+	bool empty() const { return size() == 0; }
+
+	size_t count(const key_type& key) const {
+		return key.empty()? size() : 0;
+	}
+
+	size_t size() const { return range.size(); }
+};
+
 template <class IT>
-struct basic_iterator_ptree {
+struct basic_iterator_ptree { 
 	using key_type = std::string;
 	using data_type = std::string;
 
@@ -270,7 +302,7 @@ int main() {
 
 		basic_alarm_ptree ap2(as2);
 		variant_ptree_holder<basic_alarm_ptree> vp2(ap2);
-		holder.put_child("alarm source 1", vp2);
+		holder.put_child("alarm source 2", vp2);
 
 		basic_alarm_ptree ap3(as3);
 		variant_ptree_holder<basic_alarm_ptree> vp3(ap3);
@@ -286,7 +318,9 @@ int main() {
 		alarms_vec.push_back(Alarm{"alarm 1", 1, 154, "msg 1"});
 		alarms_vec.push_back(Alarm{"alarm 2", 2, 176, "msg 2"});
 
-		auto range = alarms_vec | ranges::view::transform([](Alarm& a)->std::pair<std::string, Alarm>{ return {a.name, a}; });
+		auto alarm_to_json_pair = [](Alarm& a) -> std::pair<std::string, Alarm> { return {a.name, a}; };
+
+		auto range = alarms_vec | ranges::view::transform(alarm_to_json_pair);
 
 		using iterator_type = decltype(range.begin());
 		using ptree_type = basic_iterator_ptree<iterator_type>;
@@ -294,6 +328,19 @@ int main() {
 		ptree_type bip(range.begin(), range.end());
 		variant_ptree_holder<ptree_type> vp5(bip);
 		holder.put_child("alarm vector 1", vp5);
+
+		std::array<Alarm, 4> alarms_arr = {
+			Alarm {"alarm 1", 1, 321, "msg 1"},
+			Alarm {"alarm 2", 2, 363, "msg 2"},
+			Alarm {"alarm 3", 3, 431, "msg 3"},
+			Alarm {"alarm 4", 4, 1204, "msg 4"}
+		};
+
+		auto range2 = alarms_arr | ranges::view::transform(alarm_to_json_pair);
+		basic_range_ptree<decltype(range2)> rptree(range2);
+		variant_ptree_holder<decltype(rptree)> vp6(rptree);
+		holder.put_child("alarm vector 1", vp6);
+		
 
 		pt::write_json(std::cout, holder, true);
 	}
