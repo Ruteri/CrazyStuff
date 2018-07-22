@@ -18,18 +18,24 @@ namespace pt = boost::property_tree;
 
 struct Alarm {
 	using key_type = std::string;
-	std::string name;
 	size_t id;
 	size_t raise_time;
 	std::string msg;
+
+	// non copyable
+	Alarm(size_t _id, size_t _raise_time, std::string _msg): id(_id), raise_time(_raise_time), msg(_msg) {}
+	Alarm(const Alarm&) = delete;
+	Alarm(Alarm&&) = default;
+	Alarm& operator=(const Alarm&) = delete;
+	Alarm& operator=(Alarm&&) = default;
 };
 
 struct AlarmSource {
 	std::string name;
-	std::deque<std::pair<std::string, Alarm>> alarms;
+	std::deque<Alarm> alarms;
 };
 
-struct te_variant_ptree_holder {
+struct te_multitype_ptree_holder {
 	using key_type = std::string;
     virtual void write_json_helper(std::basic_ostream<key_type::value_type> &stream, int indent, bool pretty) const = 0;
 
@@ -37,8 +43,8 @@ struct te_variant_ptree_holder {
 };
 
 template <typename T>
-struct variant_ptree_holder: public te_variant_ptree_holder {
-	using te_variant_ptree_holder::key_type;
+struct multitype_ptree_holder: public te_multitype_ptree_holder {
+	using te_multitype_ptree_holder::key_type;
     void write_json_helper(std::basic_ostream<key_type::value_type> &stream, int indent, bool pretty) const override {
 		boost::property_tree::json_parser::write_json_helper(stream, obj, indent, pretty);
 	}
@@ -50,49 +56,11 @@ struct variant_ptree_holder: public te_variant_ptree_holder {
 	T& obj;
 
 	/* template <typename... Args> // perfect forwarding maybe?
-	variant_ptree_holder(Args... args): obj(T(args...)) {} // use by-value (T obj) */
+	// this should be enable_if'd for types you want to copy / construct inplace
+	multitype_ptree_holder(Args... args): obj(T(args...)) {} // use by-value (T obj) */
 
-	variant_ptree_holder(T& _obj): obj(_obj) {}
+	multitype_ptree_holder(T& _obj): obj(_obj) {}
 
-};
-
-// adapter class
-struct basic_alarm_ptree { // TODO: make container type a template
-	using key_type = std::string;
-	using data_type = Alarm;
-
-	using container_type = typename std::deque<std::pair<key_type, Alarm>>;
-	using const_iterator = typename container_type::const_iterator;
-
-	boost::optional<std::reference_wrapper<AlarmSource>> alarm_source;
-	container_type empty_container;
-
-	const_iterator begin() const {
-		if (alarm_source)
-			return (*alarm_source).get().alarms.begin();
-		return  empty_container.begin();
-	}
-
-	const_iterator end() const {
-		if (alarm_source)
-			return (*alarm_source).get().alarms.end();
-		return  empty_container.end();
-	}
-	
-	basic_alarm_ptree() = default;
-	basic_alarm_ptree(AlarmSource& as): alarm_source(std::ref(as)) {}
-
-	/* serialization (access) */
-	template <typename Str>
-	Str get_value() const { return ""; }
-
-	bool empty() const { return size() == 0; }
-
-	size_t count(const key_type& key) const {
-		return key.empty()? size() : 0;
-	}
-
-	size_t size() const { return alarm_source? (*alarm_source).get().alarms.size() : 0; }
 };
 
 template <class Range>
@@ -100,55 +68,20 @@ struct basic_range_ptree {
 	using key_type = std::string;
 	using data_type = std::string;
 
-	Range range;
+	Range &range;
 	using const_iterator = decltype(range.begin());
 
-	data_type m_data;
-
 	const_iterator begin() const {
-		return ranges::begin(range);
+		return range.begin();
 	}
 
 	const_iterator end() const {
-		return ranges::end(range);
+		return range.end();
 	}
 	
-	basic_range_ptree(Range _range, const data_type& data = data_type()): range(_range), m_data(data) {}
-
-	/* serialization (access) */
-	template <typename Str>
-	Str get_value() const { return Str(m_data); }
-
-	bool empty() const { return size() == 0; }
-
-	size_t count(const key_type& key) const {
-		return key.empty()? size() : 0;
-	}
-
-	size_t size() const { return range.size(); }
-};
-
-template <class IT>
-struct basic_iterator_ptree { 
-	using key_type = std::string;
-	using data_type = std::string;
-
-	using const_iterator = IT;
-
-	IT begin_it;
-	IT end_it;
-
 	data_type m_data;
 
-	IT begin() const {
-		return begin_it;
-	}
-
-	IT end() const {
-		return end_it;
-	}
-	
-	basic_iterator_ptree(IT _b, IT _e, const data_type& data = data_type()): begin_it(_b), end_it(_e), m_data(data) {}
+	basic_range_ptree(Range &_range, const data_type& data = data_type()): range(_range), m_data(data) {}
 
 	/* serialization (access) */
 	template <typename Str>
@@ -160,21 +93,31 @@ struct basic_iterator_ptree {
 		return key.empty()? size() : 0;
 	}
 
-	size_t size() const { return std::distance(begin_it, end_it); }
+	// see errors section
+	size_t size() const { return std::distance(begin(), end()); }
 };
 
 #include <functional>
 
 // ignore this, workaround for key_type in boost's function specialization
+// best to write your own reference wrapper for this specific need
+/*
+template <typename T>
+struct my_wrapper {
+	reference_wrapper<T> ref;
+	T& get() { return ref.get(); }
+	using key_type = T::key_type;
+};
+*/
 namespace std {
 
 template <>
-struct _Reference_wrapper_base<te_variant_ptree_holder>
+struct _Reference_wrapper_base<te_multitype_ptree_holder>
     : _Reference_wrapper_base_impl<
-      __has_argument_type<te_variant_ptree_holder>::value,
-      __has_first_argument_type<te_variant_ptree_holder>::value
-      && __has_second_argument_type<te_variant_ptree_holder>::value,
-      te_variant_ptree_holder>
+      __has_argument_type<te_multitype_ptree_holder>::value,
+      __has_first_argument_type<te_multitype_ptree_holder>::value
+      && __has_second_argument_type<te_multitype_ptree_holder>::value,
+      te_multitype_ptree_holder>
 {
 	using key_type = std::string;
 };
@@ -186,7 +129,7 @@ struct basic_ptree_holder { // TODO: make container type a template
 	using path_type = std::string;
 	using data_type = std::string;
 
-	using held_type = std::reference_wrapper<te_variant_ptree_holder>;
+	using held_type = std::reference_wrapper<te_multitype_ptree_holder>;
 	using container_type = typename std::deque<std::pair<key_type, held_type>>;
 	using const_iterator = typename container_type::const_iterator;
 
@@ -254,7 +197,7 @@ namespace boost { namespace property_tree { namespace json_parser {
 		if (pretty) stream << Ch('\n') << Str(4 * (indent + 1), Ch(' '));
 		stream << Ch('"') << Str("msg") << Ch('"') << Ch(':');
 		if (pretty) stream << Ch(' ');
-		stream << Str(pt.msg);
+		stream << Ch('"') << Str(pt.msg) << Ch('"') ;
 
 		if (pretty) stream << Ch('\n');
 
@@ -267,14 +210,14 @@ namespace boost { namespace property_tree { namespace json_parser {
 
     template <>
     void write_json_helper(std::basic_ostream<std::string::value_type> &stream, 
-                           const std::reference_wrapper<te_variant_ptree_holder> &pt,
+                           const std::reference_wrapper<te_multitype_ptree_holder> &pt,
                            int indent, bool pretty)
     {
 		pt.get().write_json_helper(stream, indent, pretty);
 	}
 
     template <>
-    bool verify_json(const std::reference_wrapper<te_variant_ptree_holder> &pt, int indent) {
+    bool verify_json(const std::reference_wrapper<te_multitype_ptree_holder> &pt, int indent) {
 		return pt.get().verify_json(indent);
 	}
 
@@ -286,63 +229,79 @@ int main() {
 
 	{
 		basic_ptree_holder holder;
+
+		// adding good ol' ptree
+		pt::ptree normal_ptree("regular ptree attr value");
+		multitype_ptree_holder<decltype(normal_ptree)> vp(normal_ptree);
+		holder.put_child("regular ptree attr", vp);
+
+		// class Alarm is not copyable - this works on original references to alarms in AlarmSource / other containers which is actually, like, super useful
+		// ranges from some holder via ranges (w/o copying the container or the elements)
 		AlarmSource as1;
-		as1.alarms.emplace_back("a", Alarm{"", 1, 100, "alarm1"});
-		as1.alarms.emplace_back("b", Alarm{"", 2, 113, "alarm2"});
+		as1.alarms.push_back(Alarm{1, 100, ""});
+		as1.alarms.push_back(Alarm{2, 113, ""});
 
 		AlarmSource as2;
-		as2.alarms.emplace_back("c", Alarm{"", 1, 103, "alarm1"});
-		as2.alarms.emplace_back("d", Alarm{"", 2, 121, "alarm2"});
+		as2.alarms.emplace_back(Alarm{1, 103, ""});
+		as2.alarms.emplace_back(Alarm{2, 121, ""});
 
 		AlarmSource as3;
 
-		basic_alarm_ptree ap1(as1);
-		variant_ptree_holder<basic_alarm_ptree> vp1(ap1);
-		holder.put_child("alarm source 1", vp1);
+		auto alarm_to_json_pair = [](Alarm& a) -> std::pair<std::string, Alarm&> { return {"", a}; };
+		auto alarm_older_than = [](int _min) { return [_min](Alarm& a){ return a.raise_time < _min; }; };
 
-		basic_alarm_ptree ap2(as2);
-		variant_ptree_holder<basic_alarm_ptree> vp2(ap2);
-		holder.put_child("alarm source 2", vp2);
+		size_t c_id = 1;
+		auto fix_ids = [&c_id](std::pair<std::string, Alarm&> ap) { ap.second.id = c_id++; };
 
-		basic_alarm_ptree ap3(as3);
-		variant_ptree_holder<basic_alarm_ptree> vp3(ap3);
-		holder.put_child("alarm source 1", vp3);
+		// you can actually use everything from the ranges library to filter / modify objects
+		auto && range = ranges::view::concat(as1.alarms, as2.alarms, as3.alarms)
+		              | ranges::view::remove_if(alarm_older_than(110))
+		              | ranges::view::transform(alarm_to_json_pair);
 
-		pt::ptree pt4;
-		variant_ptree_holder<pt::ptree> vp4(pt4);
-		holder.put_child("some other json stuff", vp4);
-		pt4.put_value("some other value");
+		ranges::for_each(range, fix_ids);
 
-		using container_type = std::vector<Alarm>;
-		container_type alarms_vec;
-		alarms_vec.push_back(Alarm{"alarm 1", 1, 154, "msg 1"});
-		alarms_vec.push_back(Alarm{"alarm 2", 2, 176, "msg 2"});
 
-		auto alarm_to_json_pair = [](Alarm& a) -> std::pair<std::string, Alarm> { return {a.name, a}; };
+		basic_range_ptree<decltype(range)> rptree2(range);
+		multitype_ptree_holder<decltype(rptree2)> vp2(rptree2);
+		holder.put_child("alarms 1", vp2);
 
-		auto range = alarms_vec | ranges::view::transform(alarm_to_json_pair);
-
-		using iterator_type = decltype(range.begin());
-		using ptree_type = basic_iterator_ptree<iterator_type>;
-
-		ptree_type bip(range.begin(), range.end());
-		variant_ptree_holder<ptree_type> vp5(bip);
-		holder.put_child("alarm vector 1", vp5);
-
+		// creating range from an array (or any other container)
 		std::array<Alarm, 4> alarms_arr = {
-			Alarm {"alarm 1", 1, 321, "msg 1"},
-			Alarm {"alarm 2", 2, 363, "msg 2"},
-			Alarm {"alarm 3", 3, 431, "msg 3"},
-			Alarm {"alarm 4", 4, 1204, "msg 4"}
+			Alarm {1, 321, "msg 1"},
+			Alarm {2, 363, "msg 2"},
+			Alarm {3, 431, "msg 3"},
+			Alarm {4, 1204, "msg 4"}
 		};
 
 		auto range2 = alarms_arr | ranges::view::transform(alarm_to_json_pair);
 		basic_range_ptree<decltype(range2)> rptree(range2);
-		variant_ptree_holder<decltype(rptree)> vp6(rptree);
-		holder.put_child("alarm vector 1", vp6);
+		multitype_ptree_holder<decltype(rptree)> vp6(rptree);
+		holder.put_child("alarms 2", vp6);
 		
+		basic_ptree_holder holder2;
+		holder2.put_value("You can even put holders inside other holders (like in normal ptree)");
+		multitype_ptree_holder<basic_ptree_holder> vp3(holder2);
+		holder.put_child("Other holder", vp3);
 
 		pt::write_json(std::cout, holder, true);
+	}
+
+	{ // errors (in my opinion) I encountered in range-v3
+		std::vector<int> v1 {0, 1, 2, 3};
+		std::vector<int> v2 {0, 1, 2, 3};
+		auto add_5 = [](int c) { return c + 5; };
+		auto remove_if_less_than = [](int _min) { return [_min](int c) -> bool { return c < _min; }; };
+		auto && range = ranges::view::concat(v1, v2) | ranges::view::remove_if(remove_if_less_than(2)) | ranges::view::transform(add_5);
+
+		auto bit = ranges::begin(range);
+		auto eit = ranges::begin(range);
+		auto size = std::distance(bit, eit);
+		// auto size = range.size() // Oops, doesn't compile (hence std::distance instead of .size() in range wrapper)
+
+		auto int_to_pair = [](int c) -> std::pair<int, int> { return {c, c}; };
+		auto range2 = v1 | ranges::view::transform(int_to_pair);
+		auto bit2 = range2.begin();
+		// auto si = bit2->second; // Oops, doesn't compile (see boost's write.hpp patch)
 	}
 
 	return 0;
