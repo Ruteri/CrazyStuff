@@ -26,3 +26,7 @@ target_compile_options(ShootYourselfInTheFootWithVirtualFunctions PRIVATE --std=
 project (SuperiorMultitypeRangesV3BasedPtree)
 add_executable(SuperiorMultitypeRangesV3BasedPtree rangesv3_ptree.cpp)
 target_compile_options(SuperiorMultitypeRangesV3BasedPtree PRIVATE --std=c++14 -ggdb)
+
+project (ValueConcepts)
+add_executable(ValueConcepts value_concepts.cpp)
+target_compile_options(ValueConcepts PRIVATE --std=c++20 -ggdb)
